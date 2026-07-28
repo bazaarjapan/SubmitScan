@@ -28,8 +28,8 @@ test('buildBarcodeRows creates encoded formulas and preserves empty rows', () =>
 
   assert.equal(rows[0].id, '01A002');
   assert.match(rows[0].formula, /ENCODEURL\(D2\)/);
-  assert.match(rows[0].formula, /xres=3&height=150&width=306/);
-  assert.match(rows[0].formula, /,4,150,306\)$/);
+  assert.match(rows[0].formula, /xres=3&height=90&width=306/);
+  assert.match(rows[0].formula, /,4,90,306\)$/);
   assert.equal(rows[1].id, '');
   assert.equal(rows[1].formula, '');
 });
@@ -37,9 +37,9 @@ test('buildBarcodeRows creates encoded formulas and preserves empty rows', () =>
 test('barcode layout uses high-resolution image and matching cell sizes', () => {
   assert.equal(CONFIG.barcodeXResolution, 3);
   assert.equal(CONFIG.barcodeImageWidth, 306);
-  assert.equal(CONFIG.barcodeImageHeight, 150);
+  assert.equal(CONFIG.barcodeImageHeight, 90);
   assert.equal(CONFIG.barcodeColumnWidth, 320);
-  assert.equal(CONFIG.barcodeRowHeight, 160);
+  assert.equal(CONFIG.barcodeRowHeight, 100);
 });
 
 test('findDuplicateIds ignores blanks and returns each duplicate once', () => {
