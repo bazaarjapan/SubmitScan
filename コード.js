@@ -10,6 +10,11 @@ const CONFIG = Object.freeze({
   rosterStartRow: 2,
   barcodeIdColumn: 4,
   barcodeFormulaColumn: 6,
+  barcodeXResolution: 3,
+  barcodeImageWidth: 306,
+  barcodeImageHeight: 150,
+  barcodeColumnWidth: 320,
+  barcodeRowHeight: 160,
 });
 
 function onOpen() {
@@ -81,6 +86,8 @@ function barcodelabel() {
   sheet
     .getRange(CONFIG.rosterStartRow, CONFIG.barcodeFormulaColumn, rowCount, 1)
     .setValues(barcodeRows.map(row => [row.formula]));
+  sheet.setColumnWidth(CONFIG.barcodeFormulaColumn, CONFIG.barcodeColumnWidth);
+  sheet.setRowHeights(CONFIG.rosterStartRow, rowCount, CONFIG.barcodeRowHeight);
 
   const generatedCount = barcodeRows.filter(row => row.id !== '').length;
   ui.alert(`${generatedCount}件のバーコードを作成しました。`);
@@ -196,7 +203,7 @@ function buildBarcodeRows(sourceRows, startRow) {
     const sheetRow = startRow + index;
     const formula = id === ''
       ? ''
-      : `=IMAGE("https://www.webarcode.com/barcode/image.php?code="&ENCODEURL(D${sheetRow})&"&type=C128B&xres=1&height=50&width=102&font=3&output=png&style=196")`;
+      : `=IMAGE("https://www.webarcode.com/barcode/image.php?code="&ENCODEURL(D${sheetRow})&"&type=C128B&xres=${CONFIG.barcodeXResolution}&height=${CONFIG.barcodeImageHeight}&width=${CONFIG.barcodeImageWidth}&font=3&output=png&style=196",4,${CONFIG.barcodeImageHeight},${CONFIG.barcodeImageWidth})`;
     return {id, formula};
   });
 }
@@ -315,6 +322,7 @@ function buildCheckSummary(result) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    CONFIG,
     normalizeBarcode,
     buildBarcodeRows,
     findDuplicateIds,
