@@ -1,69 +1,328 @@
 // **************************************************
-// 内容:提出物管理
-// 作成日:2021/06/21
-// 作成者:noboru ando
+// 内容: 提出物管理
+// 作成日: 2021/06/21
+// 作成者: noboru ando
 // **************************************************
+
+const CONFIG = Object.freeze({
+  inputSheetName: '読み込み',
+  rosterSheetName: 'バーコード作成',
+  rosterStartRow: 2,
+  barcodeIdColumn: 4,
+  barcodeFormulaColumn: 6,
+});
+
 function onOpen() {
-  var sht = SpreadsheetApp.getActive().getSheetByName('読み込み');
-  sht.activate();
-  sht.clear();
-  sht.getRange('A1').activate();
-  SpreadsheetApp
-    .getActiveSpreadsheet()
-    .addMenu('バーコード', [
-      {name: 'チェック', functionName: 'barcodelabelcheck'},
-      {name: '入力初期化', functionName: 'syokika'},
-      {name: 'バーコード作成', functionName: 'barcodelabel'},
-    ]);
+  SpreadsheetApp.getUi()
+    .createMenu('バーコード')
+    .addItem('チェック', 'barcodelabelcheck')
+    .addItem('入力初期化', 'syokika')
+    .addItem('バーコード作成', 'barcodelabel')
+    .addToUi();
 }
 
 function syokika() {
-  var sht = SpreadsheetApp.getActive().getSheetByName('読み込み');
-  Browser.msgBox("半角英数入力モードにしてください。全角かなモードだと正常に読み込めません");
-  sht.activate();
-  sht.clear();
-  sht.getRange('A1').activate();
-}
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.inputSheetName);
 
-
-function barcodelabel(){
-  var sht = SpreadsheetApp.getActive().getSheetByName('バーコード作成');
-  var lastRow = sht.getLastRow();
-  for (var i=2; i<=lastRow; i++) {
-      var barcodeId = String(sht.getRange(i, 1).getValue()) + String(sht.getRange(i, 2).getValue()) + String(sht.getRange(i, 3).getValue());
-//      var barc1 = '=image(\"https://www.webarcode.com/barcode/image.php?code=\"&D' + i +'&\"&type=C128B&xres=1&height=75&width=150&font=3&output=png&style=196\")'
-      var barc1 = '=image(\"https://www.webarcode.com/barcode/image.php?code=\"&D' + i +'&\"&type=C128B&xres=1&height=50&width=102&font=3&output=png&style=196\")' // パラメータを変更 (height=50, width=102, style=196)
-//      var barc1 = '=image(\"https://www.webarcode.com/barcode/image.php?code=\"&D' + i +'&\"&type=C128B&xres=1&height=70&width=190&font=3&output=png&style=197\")'
-      sht.getRange(i, 4).setValue(barcodeId);
-      sht.getRange(i, 6).setValue(barc1);
+  if (!sheet) {
+    ui.alert(`「${CONFIG.inputSheetName}」シートが見つかりません。`);
+    return;
   }
+
+  const response = ui.alert(
+    '入力初期化',
+    '読み込んだバーコードを消去します。よろしいですか？',
+    ui.ButtonSet.YES_NO
+  );
+  if (response !== ui.Button.YES) {
+    return;
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 0) {
+    sheet.getRange(1, 1, lastRow, 1).clearContent();
+  }
+  sheet.activate();
+  sheet.getRange('A1').activate();
+  ui.alert('初期化しました。半角英数入力モードで読み込んでください。');
 }
 
- function barcodelabelcheck() {
-    var datetime = new Date();
-    var today = Utilities.formatDate(datetime,'JST', 'yyyy/MM/dd');
-    var sht1 = SpreadsheetApp.getActive().getSheetByName('読み込み');
-    var sht2 = SpreadsheetApp.getActive().getSheetByName('バーコード作成');
-    sht2.activate();
-    var lastRow1 = sht1.getLastRow();
-    var lastRow2 = sht2.getLastRow();
-    var lastCol2 = sht2.getLastColumn();
-    sht2.getRange(1, lastCol2 + 1).setValue(today);
-    const values1 = sht1.getRange(1, 1, lastRow1, 1).getValues().flat();
-    const values2 = sht2.getRange(2, 4, lastRow2 -1, 1).getValues().flat();
-    Logger.log(values1);
-    Logger.log(values2);
-    for (var i=1; i<=lastRow1; i++) {
-      var r = values2.indexOf(values1[i-1]) + 2;
-      sht2.getRange(r, lastCol2 + 1).setValue(1);
+function barcodelabel() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.rosterSheetName);
+
+  if (!sheet) {
+    ui.alert(`「${CONFIG.rosterSheetName}」シートが見つかりません。`);
+    return;
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < CONFIG.rosterStartRow) {
+    ui.alert('バーコードを作成する名簿データがありません。');
+    return;
+  }
+
+  const rowCount = lastRow - CONFIG.rosterStartRow + 1;
+  const sourceRows = sheet
+    .getRange(CONFIG.rosterStartRow, 1, rowCount, 3)
+    .getDisplayValues();
+  const barcodeRows = buildBarcodeRows(sourceRows, CONFIG.rosterStartRow);
+  const duplicateIds = findDuplicateIds(barcodeRows.map(row => row.id));
+
+  if (duplicateIds.length > 0) {
+    ui.alert(`重複するバーコードIDがあります。\n${duplicateIds.join('\n')}`);
+    return;
+  }
+
+  sheet
+    .getRange(CONFIG.rosterStartRow, CONFIG.barcodeIdColumn, rowCount, 1)
+    .setValues(barcodeRows.map(row => [row.id]));
+  sheet
+    .getRange(CONFIG.rosterStartRow, CONFIG.barcodeFormulaColumn, rowCount, 1)
+    .setValues(barcodeRows.map(row => [row.formula]));
+
+  const generatedCount = barcodeRows.filter(row => row.id !== '').length;
+  ui.alert(`${generatedCount}件のバーコードを作成しました。`);
+}
+
+function barcodelabelcheck() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActive();
+  const inputSheet = spreadsheet.getSheetByName(CONFIG.inputSheetName);
+  const rosterSheet = spreadsheet.getSheetByName(CONFIG.rosterSheetName);
+
+  if (!inputSheet || !rosterSheet) {
+    const missingNames = [
+      !inputSheet ? CONFIG.inputSheetName : '',
+      !rosterSheet ? CONFIG.rosterSheetName : '',
+    ].filter(Boolean);
+    ui.alert(`次のシートが見つかりません。\n${missingNames.join('\n')}`);
+    return;
+  }
+
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    ui.alert('別の処理が実行中です。しばらく待ってから再実行してください。');
+    return;
+  }
+
+  try {
+    const inputLastRow = inputSheet.getLastRow();
+    if (inputLastRow < 1) {
+      ui.alert('読み込まれたバーコードがありません。');
+      return;
     }
-    //ここを配列にすれば処理が高速なるのは分かってるけど、初心者がわかりやすいようにあえてセル上で処理しています。
-    //for (var i=1; i<=lastRow1; i++) {
-    //  for (var j=2; j<=lastRow2; j++) {
-    //   if (sht1.getRange(i, 1).getValue() == sht2.getRange(j, 4).getValue()) {
-    //     sht2.getRange(j, lastCol+1).setValue(1);
-    //     break;
-    //    }
-    //  }
-    //}
+
+    const rosterLastRow = rosterSheet.getLastRow();
+    if (rosterLastRow < CONFIG.rosterStartRow) {
+      ui.alert('照合する名簿データがありません。');
+      return;
+    }
+
+    const scannedIds = inputSheet
+      .getRange(1, 1, inputLastRow, 1)
+      .getDisplayValues()
+      .map(row => row[0]);
+    const rosterRowCount = rosterLastRow - CONFIG.rosterStartRow + 1;
+    const registeredIds = rosterSheet
+      .getRange(CONFIG.rosterStartRow, CONFIG.barcodeIdColumn, rosterRowCount, 1)
+      .getDisplayValues()
+      .map(row => row[0]);
+    const result = evaluateSubmissionScans(scannedIds, registeredIds);
+
+    if (result.scanCount === 0) {
+      ui.alert('読み込まれたバーコードがありません。');
+      return;
+    }
+    if (result.duplicateRegisteredIds.length > 0) {
+      ui.alert(
+        `名簿に重複するバーコードIDがあります。処理を中止しました。\n${result.duplicateRegisteredIds.join('\n')}`
+      );
+      return;
+    }
+
+    const today = Utilities.formatDate(
+      new Date(),
+      Session.getScriptTimeZone(),
+      'yyyy/MM/dd'
+    );
+    const lastColumn = Math.max(rosterSheet.getLastColumn(), 1);
+    const headers = rosterSheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+    const existingResultColumns = findResultColumns(headers, today);
+    const resultColumn = existingResultColumns.length > 0
+      ? existingResultColumns[0]
+      : headers.length + 1;
+    let outputFlags = result.flags;
+
+    if (existingResultColumns.length > 0) {
+      const firstResultColumn = existingResultColumns[0];
+      const lastResultColumn = existingResultColumns[existingResultColumns.length - 1];
+      const existingRows = rosterSheet
+        .getRange(
+          CONFIG.rosterStartRow,
+          firstResultColumn,
+          rosterRowCount,
+          lastResultColumn - firstResultColumn + 1
+        )
+        .getValues();
+      const columnOffsets = existingResultColumns.map(column => column - firstResultColumn);
+      const existingFlags = collectExistingSubmissionFlags(existingRows, columnOffsets);
+      outputFlags = mergeSubmissionFlags(existingFlags, result.flags);
+    }
+
+    rosterSheet.getRange(1, resultColumn).setValue(today);
+    rosterSheet
+      .getRange(CONFIG.rosterStartRow, resultColumn, rosterRowCount, 1)
+      .setValues(outputFlags.map(value => [value]));
+    rosterSheet.activate();
+
+    ui.alert(buildCheckSummary(result));
+  } finally {
+    lock.releaseLock();
   }
+}
+
+function normalizeBarcode(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value).trim();
+}
+
+function buildBarcodeRows(sourceRows, startRow) {
+  return sourceRows.map((parts, index) => {
+    const id = parts.map(normalizeBarcode).join('');
+    const sheetRow = startRow + index;
+    const formula = id === ''
+      ? ''
+      : `=IMAGE("https://www.webarcode.com/barcode/image.php?code="&ENCODEURL(D${sheetRow})&"&type=C128B&xres=1&height=50&width=102&font=3&output=png&style=196")`;
+    return {id, formula};
+  });
+}
+
+function findDuplicateIds(ids) {
+  const seen = new Set();
+  const duplicates = new Set();
+
+  ids.map(normalizeBarcode).filter(Boolean).forEach(id => {
+    if (seen.has(id)) {
+      duplicates.add(id);
+    }
+    seen.add(id);
+  });
+
+  return [...duplicates];
+}
+
+function evaluateSubmissionScans(scannedIds, registeredIds) {
+  const normalizedRegisteredIds = registeredIds.map(normalizeBarcode);
+  const duplicateRegisteredIds = findDuplicateIds(normalizedRegisteredIds);
+  const rowIndexById = new Map();
+  normalizedRegisteredIds.forEach((id, index) => {
+    if (id !== '' && !rowIndexById.has(id)) {
+      rowIndexById.set(id, index);
+    }
+  });
+
+  const flags = registeredIds.map(() => '');
+  const seenScans = new Set();
+  const unknownIds = new Set();
+  let scanCount = 0;
+  let matchedCount = 0;
+  let duplicateScanCount = 0;
+
+  scannedIds.forEach(rawId => {
+    const id = normalizeBarcode(rawId);
+    if (id === '') {
+      return;
+    }
+    scanCount += 1;
+    if (seenScans.has(id)) {
+      duplicateScanCount += 1;
+      return;
+    }
+    seenScans.add(id);
+
+    const rowIndex = rowIndexById.get(id);
+    if (rowIndex === undefined) {
+      unknownIds.add(id);
+      return;
+    }
+    flags[rowIndex] = 1;
+    matchedCount += 1;
+  });
+
+  return {
+    flags,
+    scanCount,
+    matchedCount,
+    duplicateScanCount,
+    unknownIds: [...unknownIds],
+    duplicateRegisteredIds,
+  };
+}
+
+function findResultColumn(headers, today) {
+  const existingColumns = findResultColumns(headers, today);
+  return existingColumns.length > 0 ? existingColumns[0] : headers.length + 1;
+}
+
+function findResultColumns(headers, today) {
+  return headers.reduce((columns, header, index) => {
+    if (normalizeBarcode(header) === today) {
+      columns.push(index + 1);
+    }
+    return columns;
+  }, []);
+}
+
+function collectExistingSubmissionFlags(rows, columnOffsets) {
+  return rows.map(row => {
+    const wasSubmitted = columnOffsets.some(offset => (
+      normalizeBarcode(row[offset]) === '1'
+    ));
+    return wasSubmitted ? 1 : '';
+  });
+}
+
+function mergeSubmissionFlags(existingFlags, newFlags) {
+  return newFlags.map((newValue, index) => {
+    const existingValue = existingFlags[index];
+    const wasSubmitted = normalizeBarcode(existingValue) === '1';
+    const isSubmitted = normalizeBarcode(newValue) === '1';
+    return wasSubmitted || isSubmitted ? 1 : '';
+  });
+}
+
+function buildCheckSummary(result) {
+  const lines = [
+    'チェックが完了しました。',
+    '',
+    `読み込み件数: ${result.scanCount}件`,
+    `提出確認: ${result.matchedCount}件`,
+    `重複スキャン: ${result.duplicateScanCount}件`,
+    `未登録コード: ${result.unknownIds.length}件`,
+  ];
+  if (result.unknownIds.length > 0) {
+    lines.push('', '未登録コード:', ...result.unknownIds.slice(0, 10));
+    if (result.unknownIds.length > 10) {
+      lines.push(`ほか${result.unknownIds.length - 10}件`);
+    }
+  }
+  return lines.join('\n');
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    normalizeBarcode,
+    buildBarcodeRows,
+    findDuplicateIds,
+    evaluateSubmissionScans,
+    findResultColumn,
+    findResultColumns,
+    collectExistingSubmissionFlags,
+    mergeSubmissionFlags,
+    buildCheckSummary,
+  };
+}
