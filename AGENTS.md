@@ -2,20 +2,23 @@
 
 ## Project Structure & Module Organization
 
-This is a small, `clasp`-managed Google Apps Script project for tracking submitted items from barcode scans. Deployable files live at the repository root because `.clasp.json` uses an empty `rootDir`:
+This `clasp`-managed Google Apps Script project tracks submitted items from barcode scans. Deployable files live at the root because `.clasp.json` uses an empty `rootDir`:
 
 - `コード.js`: spreadsheet menu setup, scan-list initialization, barcode generation, and submission checks.
 - `appsscript.json`: V8 runtime, Japan timezone, logging, and spreadsheet macro configuration.
 - `.clasp.json`: local Apps Script project connection; `clasp status` excludes it from deployment.
+- `tests/`: Node.js unit tests for pure barcode and matching logic.
+- `.github/workflows/ci.yml`: syntax and unit-test checks for pushes and pull requests.
 
-There are currently no separate test, asset, or build directories. Keep new Apps Script modules at the root unless the clasp layout is deliberately changed.
+Keep deployable Apps Script modules at the root unless the clasp layout is deliberately changed. Update `.claspignore` whenever adding development-only JavaScript or JSON files.
 
 ## Build, Test, and Development Commands
 
-No compilation step or package manager is configured. Use:
+No compilation or package manager is configured. Use:
 
 ```powershell
 node --check ".\コード.js"   # Validate JavaScript syntax locally
+node --test tests/*.test.js  # Run the unit-test suite
 clasp status                 # Confirm exactly which files will be uploaded
 clasp pull                   # Refresh local files from Apps Script
 clasp push                   # Upload tracked source and manifest files
@@ -30,11 +33,11 @@ Use two-space indentation, braces for all control blocks, semicolons, and single
 
 ## Testing Guidelines
 
-No automated test framework or coverage threshold exists. Run `node --check` and test in a duplicate spreadsheet containing the expected `読み込み` and `バーコード作成` sheets. Verify menu creation, initialization, barcode formulas, duplicate or unknown scans, empty ranges, and the dated result column. Do not test with production student data.
+Use the built-in `node:test` framework and name test files `*.test.js`. Cover normalization, empty input, duplicate and unknown IDs, date-column reuse, and batch-output helpers. Run syntax and unit tests before every push. Also test Spreadsheet service integration in a duplicate spreadsheet containing the expected `読み込み` and `バーコード作成` sheets. Do not test with production student data.
 
 ## Commit & Pull Request Guidelines
 
-This directory has no local Git metadata, so no repository-specific commit convention can be inferred. If maintained in Git, use focused imperative commits such as `Fix unknown barcode handling`. Pull requests should describe affected spreadsheet workflows, list manual checks, link an issue when available, and include screenshots for visible sheet or menu changes.
+Create work from a GitHub Issue and include its number in the branch name, for example `issue-12-fix-unknown-barcodes`. Use focused imperative commits such as `Improve submission scan safety`. Pull requests must include `Closes #<issue>`, describe affected spreadsheet workflows, list automated and manual checks, and include screenshots for visible sheet or menu changes.
 
 ## Security & Configuration
 
