@@ -5,6 +5,9 @@ const {
   CONFIG,
   normalizeBarcode,
   buildBarcodeRows,
+  buildBarcodeFormula,
+  resolvePrintRowNumbers,
+  buildPrintRows,
   findDuplicateIds,
   evaluateSubmissionScans,
   findResultColumn,
@@ -40,6 +43,43 @@ test('barcode layout uses high-resolution image and matching cell sizes', () => 
   assert.equal(CONFIG.barcodeImageHeight, 90);
   assert.equal(CONFIG.barcodeColumnWidth, 320);
   assert.equal(CONFIG.barcodeRowHeight, 100);
+});
+
+test('buildBarcodeFormula supports a print-sheet cell reference', () => {
+  const formula = buildBarcodeFormula('B2');
+  assert.match(formula, /ENCODEURL\(B2\)/);
+  assert.match(formula, /xres=3&height=90&width=306/);
+  assert.match(formula, /,4,90,306\)$/);
+});
+
+test('resolvePrintRowNumbers uses selected roster rows within the data range', () => {
+  assert.deepEqual(
+    resolvePrintRowNumbers(CONFIG.rosterSheetName, 3, 3, 10),
+    [3, 4, 5]
+  );
+  assert.deepEqual(
+    resolvePrintRowNumbers(CONFIG.rosterSheetName, 1, 3, 3),
+    [2, 3]
+  );
+});
+
+test('resolvePrintRowNumbers falls back to all roster rows without a valid selection', () => {
+  assert.deepEqual(resolvePrintRowNumbers('読み込み', 1, 1, 4), [2, 3, 4]);
+  assert.deepEqual(resolvePrintRowNumbers(CONFIG.rosterSheetName, 1, 1, 4), [2, 3, 4]);
+});
+
+test('buildPrintRows keeps selected display data and removes blank or duplicate IDs', () => {
+  const rows = buildPrintRows([
+    ['1年', 'A組', '安藤', '001'],
+    ['1年', 'B組', '佐藤', ''],
+    ['2年', 'A組', '鈴木', '002'],
+    ['重複', '', '', '001'],
+  ], [2, 3, 4, 5]);
+
+  assert.deepEqual(rows, [
+    {info: '1年 / A組 / 安藤', id: '001'},
+    {info: '2年 / A組 / 鈴木', id: '002'},
+  ]);
 });
 
 test('findDuplicateIds ignores blanks and returns each duplicate once', () => {
