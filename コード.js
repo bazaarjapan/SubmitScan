@@ -12,9 +12,9 @@ const CONFIG = Object.freeze({
   barcodeFormulaColumn: 6,
   barcodeXResolution: 3,
   barcodeImageWidth: 306,
-  barcodeImageHeight: 150,
+  barcodeImageHeight: 90,
   barcodeColumnWidth: 320,
-  barcodeRowHeight: 160,
+  barcodeRowHeight: 100,
 });
 
 function onOpen() {
@@ -87,7 +87,11 @@ function barcodelabel() {
     .getRange(CONFIG.rosterStartRow, CONFIG.barcodeFormulaColumn, rowCount, 1)
     .setValues(barcodeRows.map(row => [row.formula]));
   sheet.setColumnWidth(CONFIG.barcodeFormulaColumn, CONFIG.barcodeColumnWidth);
-  sheet.setRowHeights(CONFIG.rosterStartRow, rowCount, CONFIG.barcodeRowHeight);
+  sheet.setRowHeightsForced(
+    CONFIG.rosterStartRow,
+    rowCount,
+    CONFIG.barcodeRowHeight
+  );
 
   const generatedCount = barcodeRows.filter(row => row.id !== '').length;
   ui.alert(`${generatedCount}件のバーコードを作成しました。`);
