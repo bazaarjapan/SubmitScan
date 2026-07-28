@@ -148,6 +148,11 @@ function createBarcodePrintSheet() {
   try {
     const printSheet = getOrCreateManagedPrintSheet(spreadsheet);
     ensureSheetSize(printSheet, printRows.length + 1, 3);
+    const rebuildRowCount = Math.max(printRows.length + 1, printSheet.getLastRow());
+    const rebuildColumnCount = Math.max(3, printSheet.getLastColumn());
+    printSheet
+      .getRange(1, 1, rebuildRowCount, rebuildColumnCount)
+      .breakApart();
     printSheet.clear();
     printSheet.setHiddenGridlines(true);
     printSheet.setFrozenRows(1);
