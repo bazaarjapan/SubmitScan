@@ -150,11 +150,20 @@ function barcodelabelcheck() {
     const lastColumn = Math.max(rosterSheet.getLastColumn(), 1);
     const headers = rosterSheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
     const resultColumn = findResultColumn(headers, today);
+    let outputFlags = result.flags;
+
+    if (resultColumn <= headers.length) {
+      const existingFlags = rosterSheet
+        .getRange(CONFIG.rosterStartRow, resultColumn, rosterRowCount, 1)
+        .getValues()
+        .map(row => row[0]);
+      outputFlags = mergeSubmissionFlags(existingFlags, result.flags);
+    }
 
     rosterSheet.getRange(1, resultColumn).setValue(today);
     rosterSheet
       .getRange(CONFIG.rosterStartRow, resultColumn, rosterRowCount, 1)
-      .setValues(result.flags.map(value => [value]));
+      .setValues(outputFlags.map(value => [value]));
     rosterSheet.activate();
 
     ui.alert(buildCheckSummary(result));
@@ -248,6 +257,15 @@ function findResultColumn(headers, today) {
   return existingIndex >= 0 ? existingIndex + 1 : headers.length + 1;
 }
 
+function mergeSubmissionFlags(existingFlags, newFlags) {
+  return newFlags.map((newValue, index) => {
+    const existingValue = existingFlags[index];
+    const wasSubmitted = normalizeBarcode(existingValue) === '1';
+    const isSubmitted = normalizeBarcode(newValue) === '1';
+    return wasSubmitted || isSubmitted ? 1 : '';
+  });
+}
+
 function buildCheckSummary(result) {
   const lines = [
     'チェックが完了しました。',
@@ -273,6 +291,7 @@ if (typeof module !== 'undefined' && module.exports) {
     findDuplicateIds,
     evaluateSubmissionScans,
     findResultColumn,
+    mergeSubmissionFlags,
     buildCheckSummary,
   };
 }
