@@ -16,6 +16,8 @@ const CONFIG = Object.freeze({
   barcodeColumnWidth: 320,
   barcodeRowHeight: 100,
   printSheetName: 'バーコード印刷',
+  printSheetMarkerKey: 'SUBMITSCAN_MANAGED_BARCODE_PRINT_SHEET',
+  printSheetMarkerValue: 'true',
   printInfoColumnWidth: 240,
   printIdColumnWidth: 160,
 });
@@ -136,10 +138,7 @@ function createBarcodePrintSheet() {
     return;
   }
 
-  let printSheet = spreadsheet.getSheetByName(CONFIG.printSheetName);
-  if (!printSheet) {
-    printSheet = spreadsheet.insertSheet(CONFIG.printSheetName);
-  }
+  const printSheet = getOrCreateManagedPrintSheet(spreadsheet);
   ensureSheetSize(printSheet, printRows.length + 1, 3);
   printSheet.clear();
   printSheet.setHiddenGridlines(true);
@@ -349,6 +348,42 @@ function ensureSheetSize(sheet, requiredRows, requiredColumns) {
   }
 }
 
+function getOrCreateManagedPrintSheet(spreadsheet) {
+  const managedSheet = spreadsheet.getSheets().find(sheet => (
+    sheet.getDeveloperMetadata().some(metadata => (
+      metadata.getKey() === CONFIG.printSheetMarkerKey &&
+      metadata.getValue() === CONFIG.printSheetMarkerValue
+    ))
+  ));
+  if (managedSheet) {
+    return managedSheet;
+  }
+
+  const sheetName = buildUniqueSheetName(
+    spreadsheet.getSheets().map(sheet => sheet.getName()),
+    CONFIG.printSheetName
+  );
+  const printSheet = spreadsheet.insertSheet(sheetName);
+  printSheet.addDeveloperMetadata(
+    CONFIG.printSheetMarkerKey,
+    CONFIG.printSheetMarkerValue
+  );
+  return printSheet;
+}
+
+function buildUniqueSheetName(existingNames, baseName) {
+  const names = new Set(existingNames);
+  if (!names.has(baseName)) {
+    return baseName;
+  }
+
+  let suffix = 2;
+  while (names.has(`${baseName} (${suffix})`)) {
+    suffix += 1;
+  }
+  return `${baseName} (${suffix})`;
+}
+
 function findDuplicateIds(ids) {
   const seen = new Set();
   const duplicates = new Set();
@@ -469,6 +504,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildBarcodeFormula,
     resolvePrintRowNumbers,
     buildPrintRows,
+    buildUniqueSheetName,
     findDuplicateIds,
     evaluateSubmissionScans,
     findResultColumn,

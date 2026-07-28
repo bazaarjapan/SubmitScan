@@ -8,6 +8,7 @@ const {
   buildBarcodeFormula,
   resolvePrintRowNumbers,
   buildPrintRows,
+  buildUniqueSheetName,
   findDuplicateIds,
   evaluateSubmissionScans,
   findResultColumn,
@@ -80,6 +81,21 @@ test('buildPrintRows keeps selected display data and removes blank or duplicate 
     {info: '1年 / A組 / 安藤', id: '001'},
     {info: '2年 / A組 / 鈴木', id: '002'},
   ]);
+});
+
+test('buildUniqueSheetName never reuses an unrelated same-named sheet', () => {
+  assert.equal(buildUniqueSheetName([], 'バーコード印刷'), 'バーコード印刷');
+  assert.equal(
+    buildUniqueSheetName(['バーコード印刷'], 'バーコード印刷'),
+    'バーコード印刷 (2)'
+  );
+  assert.equal(
+    buildUniqueSheetName(
+      ['バーコード印刷', 'バーコード印刷 (2)', 'バーコード印刷 (3)'],
+      'バーコード印刷'
+    ),
+    'バーコード印刷 (4)'
+  );
 });
 
 test('findDuplicateIds ignores blanks and returns each duplicate once', () => {
