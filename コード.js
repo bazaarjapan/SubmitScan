@@ -1,6 +1,7 @@
 // **************************************************
 // 内容: 提出物管理
 // 作成日: 2021/06/21
+// 更新日: 2026/07/29
 // 作成者: noboru ando
 // **************************************************
 
@@ -15,6 +16,11 @@ const CONFIG = Object.freeze({
   barcodeImageHeight: 90,
   barcodeColumnWidth: 320,
   barcodeRowHeight: 100,
+  printSheetName: 'バーコード印刷',
+  printSheetMarkerKey: 'SUBMITSCAN_MANAGED_BARCODE_PRINT_SHEET',
+  printSheetMarkerValue: 'true',
+  printInfoColumnWidth: 240,
+  printIdColumnWidth: 160,
 });
 
 function onOpen() {
@@ -23,6 +29,7 @@ function onOpen() {
     .addItem('チェック', 'barcodelabelcheck')
     .addItem('入力初期化', 'syokika')
     .addItem('バーコード作成', 'barcodelabel')
+    .addItem('印刷用シートを作成', 'createBarcodePrintSheet')
     .addToUi();
 }
 
@@ -95,6 +102,87 @@ function barcodelabel() {
 
   const generatedCount = barcodeRows.filter(row => row.id !== '').length;
   ui.alert(`${generatedCount}件のバーコードを作成しました。`);
+}
+
+function createBarcodePrintSheet() {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActive();
+  const rosterSheet = spreadsheet.getSheetByName(CONFIG.rosterSheetName);
+
+  if (!rosterSheet) {
+    ui.alert(`「${CONFIG.rosterSheetName}」シートが見つかりません。`);
+    return;
+  }
+
+  const lastRow = rosterSheet.getLastRow();
+  if (lastRow < CONFIG.rosterStartRow) {
+    ui.alert('印刷する名簿データがありません。');
+    return;
+  }
+
+  const activeSheet = spreadsheet.getActiveSheet();
+  const activeRange = activeSheet ? activeSheet.getActiveRange() : null;
+  const selectedRows = resolvePrintRowNumbers(
+    activeSheet ? activeSheet.getName() : '',
+    activeRange ? activeRange.getRow() : null,
+    activeRange ? activeRange.getNumRows() : null,
+    lastRow
+  );
+  const rowCount = lastRow - CONFIG.rosterStartRow + 1;
+  const sourceRows = rosterSheet
+    .getRange(CONFIG.rosterStartRow, 1, rowCount, CONFIG.barcodeIdColumn)
+    .getDisplayValues();
+  const printRows = buildPrintRows(sourceRows, selectedRows);
+
+  if (printRows.length === 0) {
+    ui.alert('印刷できるバーコードIDがありません。先にバーコードを作成してください。');
+    return;
+  }
+
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    ui.alert('別の印刷用シート作成処理が実行中です。しばらく待ってから再実行してください。');
+    return;
+  }
+
+  try {
+    const printSheet = getOrCreateManagedPrintSheet(spreadsheet);
+    ensureSheetSize(printSheet, printRows.length + 1, 3);
+    const rebuildRowCount = Math.max(printRows.length + 1, printSheet.getLastRow());
+    const rebuildColumnCount = Math.max(3, printSheet.getLastColumn());
+    printSheet
+      .getRange(1, 1, rebuildRowCount, rebuildColumnCount)
+      .breakApart();
+    printSheet.clear();
+    printSheet.setHiddenGridlines(true);
+    printSheet.setFrozenRows(1);
+    printSheet.getRange(1, 1, 1, 3)
+      .setValues([['名簿情報', 'バーコードID', 'バーコード']])
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center');
+    printSheet.getRange(2, 1, printRows.length, 2)
+      .setValues(printRows.map(row => [row.info, row.id]))
+      .setVerticalAlignment('middle');
+    printSheet.getRange(2, 3, printRows.length, 1)
+      .setFormulas(printRows.map((row, index) => [
+        buildBarcodeFormula(`B${index + 2}`),
+      ]))
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    printSheet.setColumnWidth(1, CONFIG.printInfoColumnWidth);
+    printSheet.setColumnWidth(2, CONFIG.printIdColumnWidth);
+    printSheet.setColumnWidth(3, CONFIG.barcodeColumnWidth);
+    printSheet.setRowHeightsForced(2, printRows.length, CONFIG.barcodeRowHeight);
+    printSheet.activate();
+    printSheet.getRange('A1').activate();
+  } finally {
+    lock.releaseLock();
+  }
+
+  ui.alert(
+    `${printRows.length}件の印刷用シートを作成しました。\n` +
+    '「ファイル」→「印刷」から印刷してください。'
+  );
 }
 
 function barcodelabelcheck() {
@@ -205,11 +293,111 @@ function buildBarcodeRows(sourceRows, startRow) {
   return sourceRows.map((parts, index) => {
     const id = parts.map(normalizeBarcode).join('');
     const sheetRow = startRow + index;
-    const formula = id === ''
-      ? ''
-      : `=IMAGE("https://www.webarcode.com/barcode/image.php?code="&ENCODEURL(D${sheetRow})&"&type=C128B&xres=${CONFIG.barcodeXResolution}&height=${CONFIG.barcodeImageHeight}&width=${CONFIG.barcodeImageWidth}&font=3&output=png&style=196",4,${CONFIG.barcodeImageHeight},${CONFIG.barcodeImageWidth})`;
+    const formula = id === '' ? '' : buildBarcodeFormula(`D${sheetRow}`);
     return {id, formula};
   });
+}
+
+function buildBarcodeFormula(cellReference) {
+  return `=IMAGE("https://www.webarcode.com/barcode/image.php?code="&ENCODEURL(${cellReference})&"&type=C128B&xres=${CONFIG.barcodeXResolution}&height=${CONFIG.barcodeImageHeight}&width=${CONFIG.barcodeImageWidth}&font=3&output=png&style=196",4,${CONFIG.barcodeImageHeight},${CONFIG.barcodeImageWidth})`;
+}
+
+function resolvePrintRowNumbers(activeSheetName, selectionStartRow, selectionRowCount, lastRow) {
+  const allRows = [];
+  for (let row = CONFIG.rosterStartRow; row <= lastRow; row += 1) {
+    allRows.push(row);
+  }
+  if (
+    activeSheetName !== CONFIG.rosterSheetName ||
+    !Number.isInteger(selectionStartRow) ||
+    !Number.isInteger(selectionRowCount) ||
+    selectionRowCount < 1
+  ) {
+    return allRows;
+  }
+
+  const selectedRows = [];
+  const selectionEndRow = selectionStartRow + selectionRowCount - 1;
+  for (
+    let row = Math.max(selectionStartRow, CONFIG.rosterStartRow);
+    row <= Math.min(selectionEndRow, lastRow);
+    row += 1
+  ) {
+    selectedRows.push(row);
+  }
+  return selectedRows.length > 0 ? selectedRows : allRows;
+}
+
+function buildPrintRows(sourceRows, selectedRows) {
+  const seenIds = new Set();
+  const printRows = [];
+
+  selectedRows.forEach(sheetRow => {
+    const sourceRow = sourceRows[sheetRow - CONFIG.rosterStartRow];
+    if (!sourceRow) {
+      return;
+    }
+    const id = normalizeBarcode(sourceRow[CONFIG.barcodeIdColumn - 1]);
+    if (id === '' || seenIds.has(id)) {
+      return;
+    }
+    seenIds.add(id);
+    const info = sourceRow
+      .slice(0, CONFIG.barcodeIdColumn - 1)
+      .map(normalizeBarcode)
+      .filter(Boolean)
+      .join(' / ');
+    printRows.push({info, id});
+  });
+
+  return printRows;
+}
+
+function ensureSheetSize(sheet, requiredRows, requiredColumns) {
+  const missingRows = requiredRows - sheet.getMaxRows();
+  if (missingRows > 0) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), missingRows);
+  }
+  const missingColumns = requiredColumns - sheet.getMaxColumns();
+  if (missingColumns > 0) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), missingColumns);
+  }
+}
+
+function getOrCreateManagedPrintSheet(spreadsheet) {
+  const managedSheet = spreadsheet.getSheets().find(sheet => (
+    sheet.getDeveloperMetadata().some(metadata => (
+      metadata.getKey() === CONFIG.printSheetMarkerKey &&
+      metadata.getValue() === CONFIG.printSheetMarkerValue
+    ))
+  ));
+  if (managedSheet) {
+    return managedSheet;
+  }
+
+  const sheetName = buildUniqueSheetName(
+    spreadsheet.getSheets().map(sheet => sheet.getName()),
+    CONFIG.printSheetName
+  );
+  const printSheet = spreadsheet.insertSheet(sheetName);
+  printSheet.addDeveloperMetadata(
+    CONFIG.printSheetMarkerKey,
+    CONFIG.printSheetMarkerValue
+  );
+  return printSheet;
+}
+
+function buildUniqueSheetName(existingNames, baseName) {
+  const names = new Set(existingNames);
+  if (!names.has(baseName)) {
+    return baseName;
+  }
+
+  let suffix = 2;
+  while (names.has(`${baseName} (${suffix})`)) {
+    suffix += 1;
+  }
+  return `${baseName} (${suffix})`;
 }
 
 function findDuplicateIds(ids) {
@@ -329,6 +517,10 @@ if (typeof module !== 'undefined' && module.exports) {
     CONFIG,
     normalizeBarcode,
     buildBarcodeRows,
+    buildBarcodeFormula,
+    resolvePrintRowNumbers,
+    buildPrintRows,
+    buildUniqueSheetName,
     findDuplicateIds,
     evaluateSubmissionScans,
     findResultColumn,
