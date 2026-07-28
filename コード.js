@@ -138,30 +138,40 @@ function createBarcodePrintSheet() {
     return;
   }
 
-  const printSheet = getOrCreateManagedPrintSheet(spreadsheet);
-  ensureSheetSize(printSheet, printRows.length + 1, 3);
-  printSheet.clear();
-  printSheet.setHiddenGridlines(true);
-  printSheet.setFrozenRows(1);
-  printSheet.getRange(1, 1, 1, 3)
-    .setValues([['名簿情報', 'バーコードID', 'バーコード']])
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center');
-  printSheet.getRange(2, 1, printRows.length, 2)
-    .setValues(printRows.map(row => [row.info, row.id]))
-    .setVerticalAlignment('middle');
-  printSheet.getRange(2, 3, printRows.length, 1)
-    .setFormulas(printRows.map((row, index) => [
-      buildBarcodeFormula(`B${index + 2}`),
-    ]))
-    .setHorizontalAlignment('center')
-    .setVerticalAlignment('middle');
-  printSheet.setColumnWidth(1, CONFIG.printInfoColumnWidth);
-  printSheet.setColumnWidth(2, CONFIG.printIdColumnWidth);
-  printSheet.setColumnWidth(3, CONFIG.barcodeColumnWidth);
-  printSheet.setRowHeightsForced(2, printRows.length, CONFIG.barcodeRowHeight);
-  printSheet.activate();
-  printSheet.getRange('A1').activate();
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    ui.alert('別の印刷用シート作成処理が実行中です。しばらく待ってから再実行してください。');
+    return;
+  }
+
+  try {
+    const printSheet = getOrCreateManagedPrintSheet(spreadsheet);
+    ensureSheetSize(printSheet, printRows.length + 1, 3);
+    printSheet.clear();
+    printSheet.setHiddenGridlines(true);
+    printSheet.setFrozenRows(1);
+    printSheet.getRange(1, 1, 1, 3)
+      .setValues([['名簿情報', 'バーコードID', 'バーコード']])
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center');
+    printSheet.getRange(2, 1, printRows.length, 2)
+      .setValues(printRows.map(row => [row.info, row.id]))
+      .setVerticalAlignment('middle');
+    printSheet.getRange(2, 3, printRows.length, 1)
+      .setFormulas(printRows.map((row, index) => [
+        buildBarcodeFormula(`B${index + 2}`),
+      ]))
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+    printSheet.setColumnWidth(1, CONFIG.printInfoColumnWidth);
+    printSheet.setColumnWidth(2, CONFIG.printIdColumnWidth);
+    printSheet.setColumnWidth(3, CONFIG.barcodeColumnWidth);
+    printSheet.setRowHeightsForced(2, printRows.length, CONFIG.barcodeRowHeight);
+    printSheet.activate();
+    printSheet.getRange('A1').activate();
+  } finally {
+    lock.releaseLock();
+  }
 
   ui.alert(
     `${printRows.length}件の印刷用シートを作成しました。\n` +
