@@ -7,6 +7,8 @@ const {
   findDuplicateIds,
   evaluateSubmissionScans,
   findResultColumn,
+  findResultColumns,
+  collectExistingSubmissionFlags,
   mergeSubmissionFlags,
   buildCheckSummary,
 } = require('../コード.js');
@@ -62,6 +64,22 @@ test('evaluateSubmissionScans treats blank input as no scans', () => {
 test('findResultColumn reuses today or appends a new column', () => {
   assert.equal(findResultColumn(['氏名', '2026/07/29'], '2026/07/29'), 2);
   assert.equal(findResultColumn(['氏名', '2026/07/28'], '2026/07/29'), 3);
+});
+
+test('findResultColumns returns every existing column for today', () => {
+  assert.deepEqual(
+    findResultColumns(['氏名', '2026/07/29', '2026/07/28', ' 2026/07/29 '], '2026/07/29'),
+    [2, 4]
+  );
+});
+
+test('collectExistingSubmissionFlags merges duplicate date columns', () => {
+  const rows = [
+    [1, '', ''],
+    ['', '', 1],
+    ['', '', ''],
+  ];
+  assert.deepEqual(collectExistingSubmissionFlags(rows, [0, 2]), [1, 1, '']);
 });
 
 test('mergeSubmissionFlags preserves earlier scans and adds new matches', () => {

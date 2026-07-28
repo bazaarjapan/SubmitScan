@@ -149,14 +149,25 @@ function barcodelabelcheck() {
     );
     const lastColumn = Math.max(rosterSheet.getLastColumn(), 1);
     const headers = rosterSheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
-    const resultColumn = findResultColumn(headers, today);
+    const existingResultColumns = findResultColumns(headers, today);
+    const resultColumn = existingResultColumns.length > 0
+      ? existingResultColumns[0]
+      : headers.length + 1;
     let outputFlags = result.flags;
 
-    if (resultColumn <= headers.length) {
-      const existingFlags = rosterSheet
-        .getRange(CONFIG.rosterStartRow, resultColumn, rosterRowCount, 1)
-        .getValues()
-        .map(row => row[0]);
+    if (existingResultColumns.length > 0) {
+      const firstResultColumn = existingResultColumns[0];
+      const lastResultColumn = existingResultColumns[existingResultColumns.length - 1];
+      const existingRows = rosterSheet
+        .getRange(
+          CONFIG.rosterStartRow,
+          firstResultColumn,
+          rosterRowCount,
+          lastResultColumn - firstResultColumn + 1
+        )
+        .getValues();
+      const columnOffsets = existingResultColumns.map(column => column - firstResultColumn);
+      const existingFlags = collectExistingSubmissionFlags(existingRows, columnOffsets);
       outputFlags = mergeSubmissionFlags(existingFlags, result.flags);
     }
 
@@ -253,8 +264,26 @@ function evaluateSubmissionScans(scannedIds, registeredIds) {
 }
 
 function findResultColumn(headers, today) {
-  const existingIndex = headers.map(normalizeBarcode).indexOf(today);
-  return existingIndex >= 0 ? existingIndex + 1 : headers.length + 1;
+  const existingColumns = findResultColumns(headers, today);
+  return existingColumns.length > 0 ? existingColumns[0] : headers.length + 1;
+}
+
+function findResultColumns(headers, today) {
+  return headers.reduce((columns, header, index) => {
+    if (normalizeBarcode(header) === today) {
+      columns.push(index + 1);
+    }
+    return columns;
+  }, []);
+}
+
+function collectExistingSubmissionFlags(rows, columnOffsets) {
+  return rows.map(row => {
+    const wasSubmitted = columnOffsets.some(offset => (
+      normalizeBarcode(row[offset]) === '1'
+    ));
+    return wasSubmitted ? 1 : '';
+  });
 }
 
 function mergeSubmissionFlags(existingFlags, newFlags) {
@@ -291,6 +320,8 @@ if (typeof module !== 'undefined' && module.exports) {
     findDuplicateIds,
     evaluateSubmissionScans,
     findResultColumn,
+    findResultColumns,
+    collectExistingSubmissionFlags,
     mergeSubmissionFlags,
     buildCheckSummary,
   };
