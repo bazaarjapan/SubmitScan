@@ -311,7 +311,7 @@ function resolvePrintRowNumbers(activeSheetName, selectionStartRow, selectionRow
     activeSheetName !== CONFIG.rosterSheetName ||
     !Number.isInteger(selectionStartRow) ||
     !Number.isInteger(selectionRowCount) ||
-    selectionRowCount < 1
+    selectionRowCount <= 1
   ) {
     return allRows;
   }

@@ -67,6 +67,7 @@ test('resolvePrintRowNumbers uses selected roster rows within the data range', (
 test('resolvePrintRowNumbers falls back to all roster rows without a valid selection', () => {
   assert.deepEqual(resolvePrintRowNumbers('読み込み', 1, 1, 4), [2, 3, 4]);
   assert.deepEqual(resolvePrintRowNumbers(CONFIG.rosterSheetName, 1, 1, 4), [2, 3, 4]);
+  assert.deepEqual(resolvePrintRowNumbers(CONFIG.rosterSheetName, 3, 1, 4), [2, 3, 4]);
 });
 
 test('buildPrintRows keeps selected display data and removes blank or duplicate IDs', () => {
